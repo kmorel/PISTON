@@ -36,10 +36,23 @@ namespace detail {
 template<typename Iterator,
 	 typename ValueType = typename thrust::iterator_traits<Iterator>::value_type,
 	 typename Space = typename thrust::iterator_space<Iterator>::type>
-struct choose_container;
+
+struct choose_container
+{
+    typedef thrust::device_vector<ValueType> type;
+};
 
 template<typename Iterator, typename ValueType>
-struct choose_container<Iterator, ValueType, thrust::detail::default_device_space_tag>
+struct choose_container<Iterator, ValueType, thrust::host_system_tag>
+{
+    typedef thrust::host_vector<ValueType> type;
+};
+
+
+/*struct choose_container;
+
+template<typename Iterator, typename ValueType>
+struct choose_container<Iterator, ValueType, thrust::device_space_tag>
 {
     typedef thrust::device_vector<ValueType> type;
 };
@@ -48,7 +61,7 @@ template<typename Iterator, typename ValueType>
 struct choose_container<Iterator, ValueType, thrust::host_space_tag>
 {
     typedef thrust::host_vector<ValueType> type;
-};
+};*/
 
 } // namespace detail
 

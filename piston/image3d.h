@@ -40,7 +40,7 @@ namespace piston
 {
 
 // TODO: inherit from image2d?
-template <typename MemorySpace =  thrust::detail::default_device_space_tag>
+template <typename MemorySpace =  thrust::device_space_tag>
 struct image3d
 {
     typedef unsigned IndexType;

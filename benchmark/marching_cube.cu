@@ -10,43 +10,68 @@
 #include <vtkImageData.h>
 #include <vtkRTAnalyticSource.h>
 
-#include <piston/vtk_image3d.h>
+#include <thrust/extrema.h>
+
 #include "piston/marching_cube.h"
+#include "piston/util/tangle_field.h"
+
+#include "Stats.h"
+
+static const float ISO_START=16;
+static const float ISO_STEP=-1;
+static const int ISO_NUM=15;
+static const size_t DIMENSIONS = 128;
 
 //#define SPACE thrust::host_space_tag
-#define SPACE thrust::detail::default_device_space_tag
+#define SPACE thrust::device_space_tag
 
 using namespace piston;
 
-int
-main()
+int main()
 {
-    vtkRTAnalyticSource *src = vtkRTAnalyticSource::New();
-    src->SetWholeExtent(-100, 100, -100, 100, -100, 100);
-    src->Update();
+  const int grid_size = DIMENSIONS + 1;
 
-    vtk_image3d<SPACE> image(src->GetOutput());
+  tangle_field<SPACE>* tangle;
+  marching_cube<tangle_field<SPACE>, tangle_field<SPACE> > *isosurface;
 
-    // get max and min of 3D scalars
-    float min_iso = *thrust::min_element(image.point_data_begin(), image.point_data_end());
-    float max_iso = *thrust::max_element(image.point_data_begin(), image.point_data_end());
+  tangle = new tangle_field<SPACE>(grid_size, grid_size, grid_size);
+  isosurface = new marching_cube<tangle_field<SPACE>,  tangle_field<SPACE> >(*tangle, *tangle, ISO_START);
 
-    typedef vtk_image3d<SPACE> image_source;
-    marching_cube<image_source, image_source> isosurface(image, image, 160.0f);
+  std::vector<double> samples;
 
-    struct timeval begin, end, diff;
-    gettimeofday(&begin, 0);
-    for (float isovalue = min_iso; isovalue < max_iso; isovalue += ((max_iso-min_iso)/50)) {
-	isosurface.set_isovalue(isovalue);
-	isosurface();
+  const double MAX_RUNTIME = 30;
+  const size_t MAX_ITERATIONS = 1;
+  samples.reserve(MAX_ITERATIONS);
+
+  size_t iter = 0;
+  Timer timer;
+  for (double el = 0.0; el < MAX_RUNTIME && iter < MAX_ITERATIONS; el += samples.back(), ++iter)
+  {
+    float isovalue = ISO_START;
+    timer.Reset();
+    for (int j=0; j<ISO_NUM; j++)
+    {
+      isovalue += ISO_STEP;
+      isosurface->set_isovalue(isovalue);
+      (*isosurface)();
+      std::cout << isovalue << " " << isosurface->num_total_vertices << std::endl;
     }
-    gettimeofday(&end, 0);
-    timersub(&end, &begin, &diff);
+    samples.push_back(timer.GetElapsedTime());
+  }
 
-    float seconds = diff.tv_sec + 1.0E-6*diff.tv_usec;
-    std::cout << "total time: " << seconds << ", fps: " << 50.f/seconds << std::endl;
+  std::sort(samples.begin(), samples.end());
+  stats::Winsorize(samples, 5.0);
+  std::cout << "Benchmark \'VTK MPI Isosurface\' results:\n"
+      << "\tmedian = " << stats::PercentileValue(samples, 50.0) << "s\n"
+      << "\tmedian abs dev = " << stats::MedianAbsDeviation(samples) << "s\n"
+      << "\tmean = " << stats::Mean(samples) << "s\n"
+      << "\tstd dev = " << stats::StandardDeviation(samples) << "s\n"
+      << "\tmin = " << samples.front() << "s\n"
+      << "\tmax = " << samples.back() << "s\n"
+      << "\t# of runs = " << samples.size() << "\n";
+
+
     return 0;
-
 }
 
 
